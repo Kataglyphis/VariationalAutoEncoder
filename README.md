@@ -38,6 +38,12 @@ Run "python vae.py sample" for generating sample
 --------------------
 
 * [Python](https://www.python.org/)
+* [CuPy](https://cupy.dev/)
+* [Cuda](https://developer.nvidia.com/cuda-zone)
+
+--------------------
+## Results
+--------------------
 
 --------------------
 ## Authors
