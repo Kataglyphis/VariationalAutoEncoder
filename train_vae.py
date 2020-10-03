@@ -41,14 +41,14 @@ def get_minibatch(batch_size, idx=0, indices=None):
         idx = indices[start_idx:end_idx]
         sample_b = ff[idx]
 
-    sample_b = cp.asnumpy(sample_b)
-    sample_b = np.resize(sample_b, (batch_size, 560))
-    
+    #sample_b = cp.asnumpy(sample_b)
+    #sample_b = np.resize(sample_b, (batch_size, 560))
+    sample_b = cp.reshape(sample_b, (batch_size, 560))
     #sacue_b = np.resize(sample_b, (batch_size, 560))
 
-    sample_b = np.transpose(sample_b, (1, 0))
+    sample_b = cp.transpose(sample_b, (1, 0))
 
-    sample_b = cp.asarray(sample_b)
+    #sample_b = cp.asarray(sample_b)
 
     return sample_b
 
@@ -128,13 +128,13 @@ def forward(input):
     batch_size = input.shape[-1]
     # (1) linear
     # H = W_i \times input + Bi
-    H = cp.dot(Wi, input)  + Bi
+    H = cp.dot(Wi, input) + Bi
 
     # (2) ReLU
     # H = ReLU(H)
     H = relu(H)
 
-    epsilon = sample_unit_gaussian(latent_size=(latent_size, batch_size))
+    epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
     # (3) h > mu
     # Estimate the means of the latent distributions
     # mean = Wm \times H + Bm
@@ -146,7 +146,7 @@ def forward(input):
     logvar = cp.dot(Wv, H) + Bv
 
     # (5) sample the random variable z from means and variances (refer to the "reparameterization trick" to do this)
-    z = mean + cp.multiply(logvar,epsilon)
+    z = mean + cp.multiply(cp.exp(logvar/2),epsilon)
 
     # (6) decode z
     # D = Wd \times z + Bd
@@ -164,6 +164,7 @@ def forward(input):
     # and (10) reconstruction loss function (same as the
     rec_loss = 0
     P = decode(z)
+
     if loss_function == 'bce':
         # BCE Loss
         rec_loss = -cp.sum(cp.multiply(input, cp.log(P)) + cp.multiply(1 - input, cp.log(1 - P)))
@@ -225,16 +226,23 @@ def backward(input, activations, scale=True, alpha=1.0):
     eps, h, mean, logvar, z, dec, output, p, _, _ = activations
 
     # Perform your BACKWARD PASS (similar to the auto-encoder code)
-    # backprop from (9) and (10) (if there is an additional activation function)
-    # rec loss
+
     if loss_function == 'mse':
 
-        dl_dp = p - input / scaler
+        dl_dp = p - input
+        
+        if scale:
+            dl_dp = dl_dp / batch_size
+
         dl_doutput = dl_dp
 
     elif loss_function == 'bce':
 
-        dl_dp = (-1 * (input / p - (1 - input) / (1 - p))) / scaler
+        dl_dp = (-1 * (input / p - (1 - input) / (1 - p)))
+
+        if scale:
+            dl_dp = dl_dp / batch_size
+            
         dl_doutput = cp.multiply(dl_dp, dsigmoid(p))
 
     # backprop from (8) through fully-connected
@@ -257,39 +265,52 @@ def backward(input, activations, scale=True, alpha=1.0):
     else:
         dBd += cp.sum(dl_ddec, axis=-1, keepdims=True)
 
-    # backprop from (4) through ReLU
-    #dl_dz = cp.multiply(drelu(z), dl_dz)
-
-    # first the backpropagated loss through z from rec loss
+    # through the mu branch
+    #dz_dmean = 1
     dkl_dmean = mean
+    dl_dmean = dl_dz
+
+    #sacle kl loss accordingly to normal loss
     if scale:
         dkl_dmean = dkl_dmean / batch_size
-    dl_dmean = dl_dz
-    # here add gradient of KL loss
+
     dl_dmean += dkl_dmean
+    # through fully connected of mu branch
+    dl_dmean_h = cp.dot(Wm.T, dl_dmean)
 
-    # first the backpropagated loss through z from rec loss
-    dkl_dlogvar = -0.5 *(1 - cp.exp(logvar))
-    if scale:
-        dkl_dlogvar = dkl_dlogvar / batch_size
-
-    dl_dLogvar = cp.multiply(dl_dz,eps)
-    # here add gradient of KL loss
-    dl_dLogvar += dkl_dlogvar
-    
-
-    # backprop from (3) through fully connected
-    dl_dh = cp.dot(Wm.T, dl_dmean) + cp.dot(Wv.T, dl_dLogvar)
     dWm += cp.dot(dl_dmean, h.T)
-    dWv += cp.dot(dl_dLogvar, h.T)
+
     if batch_size == 1:
         dBm += dl_dmean
-        dBv += dl_dLogvar
     else:
         dBm += cp.sum(dl_dmean, axis=-1, keepdims=True)
-        dBv += cp.sum(dl_dLogvar, axis=-1, keepdims=True)
 
-    dl_dh = cp.multiply(drelu(h), dl_dh) 
+    # through the sigma branch
+    dz_dsigma = cp.multiply(eps, cp.multiply(0.5, cp.exp(logvar/2)))
+    dkl_dsigma = -0.5 + cp.multiply(0.5, cp.exp(logvar))
+
+    #sacle appropriate to normal loss
+    if scale:
+        dkl_dsigma = dkl_dsigma / batch_size
+
+
+    dl_dsigma = cp.multiply(dl_dz, dz_dsigma)
+    dl_dsigma += dkl_dsigma
+
+    #trough fully connected of sigma branch
+    dl_dsigma_h = cp.dot(Wv.T, dl_dsigma)
+    
+    dWv += cp.dot(dl_dsigma, h.T)
+
+    if batch_size == 1:
+        dBv += dl_dsigma
+    else:
+        dBv += cp.sum(dl_dsigma, axis=-1, keepdims=True)
+    
+
+    #bring them together
+    dl_dh = dl_dsigma_h + dl_dmean_h
+    dl_dh = np.multiply(drelu(h), dl_dh)
 
     dl_dinput = cp.dot(Wi.T, dl_dh)
     dWi += cp.dot(dl_dh, input.T)
@@ -442,29 +463,32 @@ def grad_check():
 
         print("Checking grads for weights %s ..." % name)
         n_warnings = 0
-        weight = cp.asnumpy(weight)
-        grad = cp.asnumpy(grad)
+
         for i in range(weight.size):
 
-            w = weight.flat[i]
+            #w = weight.flat[i]
+            w = weight.flatten().take(indices=i).item()
 
-            weight.flat[i] = w + delta
+            #weight.flat[i] = w + delta
+            weight.put(indices=i,values = w + delta)
             loss_positive, _, _ = forward(x)
 
-            weight.flat[i] = w - delta
+            #weight.flat[i] = w - delta
+            weight.put(indices=i,values = w - delta)
             loss_negative, _, _ = forward(x)
 
-            weight.flat[i] = w  # reset old value for this parameter
+            weight.put(indices=i,values = w)
+            #weight.flat[i] = w  # reset old value for this parameter
 
             
-            grad_analytic = grad.flat[i]
+            grad_analytic = grad.flatten().take(indices=i).item()#grad.flat[i]
             grad_numerical = (loss_positive - loss_negative) / (2 * delta)
 
             rel_error = abs(grad_analytic - grad_numerical) / abs(grad_numerical + grad_analytic)
 
             if rel_error > 0.001:
                 n_warnings += 1
-                # print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
+                print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
             
         print("%d gradient mismatch warnings found. " % n_warnings)
 
@@ -487,7 +511,7 @@ def eval():
 
         sample_ = ff[img_idx]
         org_img = sample_ * 255
-        sample_ = np.resize(sample_, (1, 560)).T
+        sample_ = cp.reshape(sample_, (1, 560)).T#np.resize(sample_, (1, 560)).T
 
         sample_ = sample_.flatten()
         loss,kl_div_loss, act = forward(sample_)
@@ -495,7 +519,7 @@ def eval():
         _,h,_,_, z, dec, output, p,_,_ = act
         # Here the sample_ is processed by the network to produce the reconstruction
 
-        img = np.sum(p, axis=-1)
+        img = cp.sum(p, axis=-1)
         img = img / n_samples
 
         fig.add_subplot(1, 2, 1)
