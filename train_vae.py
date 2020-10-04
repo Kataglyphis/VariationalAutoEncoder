@@ -115,7 +115,7 @@ Wo = cp.random.uniform(-std, std, size=(input_size, hidden_size))
 Bo = cp.random.uniform(-std, std, size=(input_size, 1))
 
 
-def forward(input):
+def forward(input, epsilon, gradcheck=False):
     if debug:
         print("input shape:", input.shape)
     # YOUR FORWARD PASS FROM HERE
@@ -132,7 +132,8 @@ def forward(input):
     # H = ReLU(H)
     H = relu(H)
 
-    epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
+    if grad_check == False:
+        epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
     # (3) h > mu
     # Estimate the means of the latent distributions
     # mean = Wm \times H + Bm
@@ -386,8 +387,9 @@ def train():
 
             x_i = get_minibatch(batch_size, i, rand_indices)
             bsz = x_i.shape[-1]
+            epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
 
-            loss, kl_div_loss, acts = forward(x_i)
+            loss, kl_div_loss, acts = forward(x_i, epsilon, False)
             _, _, _, _, z, _, _, _, rec_loss, kl_loss = acts
             # lol I computed kl_div again here
 
@@ -444,7 +446,8 @@ def grad_check():
 
     actual_bsz = x.shape[-1]  # because x can be the last batch in the dataset which has bsz < 8
 
-    loss, kl_div_loss, acts = forward(x)
+    epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
+    loss, kl_div_loss, acts = forward(x, epsilon, False)
 
     gradients = backward(x, acts, scale=False)
 
@@ -462,16 +465,17 @@ def grad_check():
 
         for i in range(weight.size):
 
+            epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
             #w = weight.flat[i]
             w = weight.flatten().take(indices=i).item()
 
             #weight.flat[i] = w + delta
             weight.put(indices=i,values = w + delta)
-            loss_positive, _, _ = forward(x)
+            loss_positive, _, _ = forward(x, epsilon, True)
 
             #weight.flat[i] = w - delta
             weight.put(indices=i,values = w - delta)
-            loss_negative, _, _ = forward(x)
+            loss_negative, _, _ = forward(x, epsilon, True)
 
             weight.put(indices=i,values = w)
             #weight.flat[i] = w  # reset old value for this parameter
@@ -480,11 +484,16 @@ def grad_check():
             grad_analytic = grad.flatten().take(indices=i).item()#grad.flat[i]
             grad_numerical = (loss_positive - loss_negative) / (2 * delta)
 
-            rel_error = abs(grad_analytic - grad_numerical) / abs(grad_numerical + grad_analytic)
+            if (abs(grad_numerical + grad_analytic) != 0):
+                rel_error = abs(grad_analytic - grad_numerical) / abs(grad_numerical + grad_analytic)
+            else:
+                rel_error = 0
 
             if rel_error > 0.001:
                 n_warnings += 1
                 print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
+
+            #print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
             
         print("%d gradient mismatch warnings found. " % n_warnings)
 
@@ -493,7 +502,8 @@ def grad_check():
 
 def eval():
     while True:
-
+        # hard coded batch size, but is not important at this step
+        epsilon = sample_unit_gaussian(latent_size=(latent_size,8))
         # read weights from file
         cmd = input("Enter an image number:  ")
 
@@ -510,7 +520,7 @@ def eval():
         sample_ = cp.reshape(sample_, (1, 560)).T#np.resize(sample_, (1, 560)).T
 
         sample_ = sample_.flatten()
-        loss,kl_div_loss, act = forward(sample_)
+        loss,kl_div_loss, act = forward(sample_, epsilon, False)
 
         _,h,_,_, z, dec, output, p,_,_ = act
         # Here the sample_ is processed by the network to produce the reconstruction
