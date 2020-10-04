@@ -317,7 +317,7 @@ def grad_check():
         n_warnings = 0
         # print(weight, grad)
         for i in range(weight.size):
-
+            
             w = weight.flat[i]
 
             weight.flat[i] = w + delta
@@ -332,10 +332,10 @@ def grad_check():
             grad_numerical = (loss_positive - loss_negative) / (2 * delta)
 
             rel_error = abs(grad_analytic - grad_numerical) / abs(grad_numerical + grad_analytic)
-
+            #print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
             if rel_error > 0.001:
                 n_warnings += 1
-                # print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
+                print('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
         print("%d gradient mismatch warnings found in these weights. " % n_warnings)
 
     return

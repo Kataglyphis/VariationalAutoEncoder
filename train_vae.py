@@ -41,14 +41,12 @@ def get_minibatch(batch_size, idx=0, indices=None):
         idx = indices[start_idx:end_idx]
         sample_b = ff[idx]
 
-    #sample_b = cp.asnumpy(sample_b)
     #sample_b = np.resize(sample_b, (batch_size, 560))
-    sample_b = cp.reshape(sample_b, (batch_size, 560))
-    #sacue_b = np.resize(sample_b, (batch_size, 560))
+    sample_b = cp.asnumpy(sample_b)
+    sample_b = np.resize(sample_b, (batch_size, 560))
+    sample_b = cp.asarray(sample_b)
 
     sample_b = cp.transpose(sample_b, (1, 0))
-
-    #sample_b = cp.asarray(sample_b)
 
     return sample_b
 
@@ -162,21 +160,20 @@ def forward(input):
 
     # # (9) dec to p(x)
     # and (10) reconstruction loss function (same as the
-    rec_loss = 0
     P = decode(z)
 
     if loss_function == 'bce':
         # BCE Loss
-        rec_loss = -cp.sum(cp.multiply(input, cp.log(P)) + cp.multiply(1 - input, cp.log(1 - P)))
+        rec_loss = -cp.sum(cp.multiply(input, cp.log(P)) + cp.multiply(1 - input, cp.log(1 - P))).take(indices=0).item()
 
     elif loss_function == 'mse':
-        rec_loss = cp.sum(0.5 * (P - input) ** 2)
+        rec_loss = cp.sum(0.5 * (P - input) ** 2).take(indices=0).item()
         # MSE Loss
 
     # variational loss with KL Divergence between P(z|x) and U(0, 1)
 
     #kl_div_loss = - 0.5 * (1 + logvar - mean^2 - e^logvar)
-    kl_div_loss = cp.sum(-0.5 * (1 + logvar - pow(mean,2) - cp.exp(logvar)))
+    kl_div_loss = cp.sum(-0.5 * (1 + logvar - pow(mean,2) - cp.exp(logvar))).take(indices=0).item()
 
     # your loss is the combination of
     #loss = rec_loss + kl_div_loss
@@ -268,13 +265,13 @@ def backward(input, activations, scale=True, alpha=1.0):
     # through the mu branch
     #dz_dmean = 1
     dkl_dmean = mean
-    dl_dmean = dl_dz
-
     #sacle kl loss accordingly to normal loss
     if scale:
         dkl_dmean = dkl_dmean / batch_size
 
-    dl_dmean += dkl_dmean
+    dl_dmean = dl_dz
+
+    dl_dmean = dl_dmean + dkl_dmean
     # through fully connected of mu branch
     dl_dmean_h = cp.dot(Wm.T, dl_dmean)
 
@@ -288,14 +285,13 @@ def backward(input, activations, scale=True, alpha=1.0):
     # through the sigma branch
     dz_dsigma = cp.multiply(eps, cp.multiply(0.5, cp.exp(logvar/2)))
     dkl_dsigma = -0.5 + cp.multiply(0.5, cp.exp(logvar))
-
     #sacle appropriate to normal loss
     if scale:
         dkl_dsigma = dkl_dsigma / batch_size
 
 
     dl_dsigma = cp.multiply(dl_dz, dz_dsigma)
-    dl_dsigma += dkl_dsigma
+    dl_dsigma = dl_dsigma + dkl_dsigma
 
     #trough fully connected of sigma branch
     dl_dsigma_h = cp.dot(Wv.T, dl_dsigma)
@@ -523,9 +519,11 @@ def eval():
         img = img / n_samples
 
         fig.add_subplot(1, 2, 1)
+        org_img = cp.asnumpy(org_img)
         plt.imshow(org_img.reshape(28, 20), cmap='gray')
 
         fig.add_subplot(1, 2, 2)
+        img = cp.asnumpy(img)
         plt.imshow(img.reshape(28, 20), cmap='gray')
         plt.show(block=True)
 
