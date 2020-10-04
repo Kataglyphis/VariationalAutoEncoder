@@ -56,3 +56,4 @@ Run "python vae.py sample" for generating sample
 --------------------
 ## Acknowledgments
 --------------------
+[Diederik P Kingma and Max Welling. 2013. Autoencoding variational bayes](https://arxiv.org/abs/1312.6114)
