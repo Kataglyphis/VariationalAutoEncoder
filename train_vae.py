@@ -555,6 +555,7 @@ def sample():
         # gs = gridspec.GridSpec(4, 4)
         # gs.update(wspace=0.05, hspace=0.05)
 
+        img = cp.asnumpy(img)
         plt.imshow(img.reshape(28, 20), cmap='gray')
         # plt.title('reconstructed face %d' % 0)
         plt.show(block=True)
