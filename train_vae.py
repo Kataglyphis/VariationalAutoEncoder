@@ -145,6 +145,8 @@ def forward(input, epsilon, gradcheck=False):
     logvar = cp.dot(Wv, H) + Bv
 
     # (5) sample the random variable z from means and variances (refer to the "reparameterization trick" to do this)
+    # variable (z) which is generated the distribution N(mean, std^2),
+    #  because std = sqrt(var)!!!
     z = mean + cp.multiply(cp.exp(logvar/2),epsilon)
 
     # (6) decode z
@@ -447,7 +449,7 @@ def grad_check():
     actual_bsz = x.shape[-1]  # because x can be the last batch in the dataset which has bsz < 8
 
     epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
-    loss, kl_div_loss, acts = forward(x, epsilon, False)
+    loss, kl_div_loss, acts = forward(x, epsilon, True)
 
     gradients = backward(x, acts, scale=False)
 
@@ -465,7 +467,7 @@ def grad_check():
 
         for i in range(weight.size):
 
-            epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
+            #epsilon = sample_unit_gaussian(latent_size=(latent_size,batch_size))
             #w = weight.flat[i]
             w = weight.flatten().take(indices=i).item()
 
