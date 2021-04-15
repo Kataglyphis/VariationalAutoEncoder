@@ -161,5 +161,5 @@ Project Link: [https://github.com/Kataglyphis/OpenGLEngine](https://github.com/K
 [license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/jonas-heinle-0b2a301a0/
-[product-screenshot]: images/Screenshot_1.png
-[product-screenshot]: images/Screenshot_2.png
+[product-screenshot1]: images/Screenshot_1.png
+[product-screenshot2]: images/Screenshot_2.png
